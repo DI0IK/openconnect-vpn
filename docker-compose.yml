@@ -1,6 +1,7 @@
 services:
   # 1. OpenConnect Client (The exit point)
   openconnect:
+    image: ghcr.io/di0ik/openconnect-vpn:main
     build:
       context: .
       network: host

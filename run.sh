@@ -17,6 +17,8 @@ if [ -z "$VPN_SERVER" ] || [ -z "$VPN_USERNAME" ] || [ -z "$VPN_PASSWORD" ] || [
     exit 1
 fi
 
+touch "$OPENCONNECT_LOG"
+
 # Start OpenConnect and log output
 echo "Starting OpenConnect..."
 openconnect --user="$VPN_USERNAME" --usergroup="$VPN_GROUP" --passwd-on-stdin "$VPN_SERVER" >> "$OPENCONNECT_LOG" < <(echo "$VPN_PASSWORD") &
