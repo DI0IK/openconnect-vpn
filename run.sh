@@ -40,7 +40,7 @@ term_handler() {
 trap term_handler TERM INT
 
 echo "Starting OpenConnect..." >> "$OPENCONNECT_LOG"
-openconnect --user="$VPN_USERNAME" --usergroup="$VPN_GROUP" --passwd-on-stdin "$VPN_SERVER" >> "$OPENCONNECT_LOG" 2>&1 < <(echo "$VPN_PASSWORD") &
+openconnect --user="$VPN_USERNAME" --usergroup="$VPN_GROUP" --passwd-on-stdin "$VPN_SERVER" $VPW_EXTRA_ARGS >> "$OPENCONNECT_LOG" 2>&1 < <(echo "$VPN_PASSWORD") &
 OC_PID=$!
 
 # Stream the log and wait for openconnect to exit
