@@ -6,7 +6,7 @@ OPENCONNECT_LOG="/var/log/openconnect.log"
 # Enable IP forwarding
 echo 1 > /proc/sys/net/ipv4/ip_forward
 
-# Set up iptables rules for masquerading (ignore errors if rules already exist)
+# Set up iptables rules for masquerading
 iptables -t nat -C POSTROUTING -o tun0 -j MASQUERADE 2>/dev/null || \
     iptables -t nat -A POSTROUTING -o tun0 -j MASQUERADE
 iptables -C FORWARD -i wg0 -o tun0 -j ACCEPT 2>/dev/null || \
@@ -14,22 +14,17 @@ iptables -C FORWARD -i wg0 -o tun0 -j ACCEPT 2>/dev/null || \
 iptables -C FORWARD -i tun0 -o wg0 -j ACCEPT 2>/dev/null || \
     iptables -A FORWARD -i tun0 -o wg0 -j ACCEPT
 
-# Check if necessary environment variables are set
-if [ -z "$VPN_SERVER" ] || [ -z "$VPN_USERNAME" ] || [ -z "$VPN_PASSWORD" ] || [ -z "$VPN_GROUP" ]; then
-        echo "VPN_SERVER, VPN_USERNAME, VPN_PASSWORD, and VPN_GROUP environment variables must be set" >> "$OPENCONNECT_LOG"  
-        exit 1
+# Check for mandatory environment variables
+if [ -z "$VPN_SERVER" ] || [ -z "$VPN_USERNAME" ] || [ -z "$VPN_PASSWORD" ] || [ -z "$VPN_GROUP" ] || [ -z "$VPN_TOKEN_SECRET" ]; then
+    echo "ERROR: Missing required environment variables." >> "$OPENCONNECT_LOG"  
+    exit 1
 fi
 
 touch "$OPENCONNECT_LOG"
 
-# Ensure vpnc-script exists and is executable
-if [ ! -x "/etc/vpnc/vpnc-script" ]; then
-    echo "/etc/vpnc/vpnc-script missing or not executable. This may cause vpnc-script errors." >> "$OPENCONNECT_LOG"
-fi
-
 # Forward signals to OpenConnect and clean up
 term_handler() {
-    echo "Stopping OpenConnect..." >> "$OPENCONNECT_LOG"
+    echo "Stopping OpenConnect gateway..." >> "$OPENCONNECT_LOG"
     if [ -n "$OC_PID" ] && kill -0 "$OC_PID" 2>/dev/null; then
         kill -TERM "$OC_PID" 2>/dev/null
         wait "$OC_PID"
@@ -39,18 +34,31 @@ term_handler() {
 
 trap term_handler TERM INT
 
-echo "Starting OpenConnect..." >> "$OPENCONNECT_LOG"
-openconnect --user="$VPN_USERNAME" --usergroup="$VPN_GROUP" --passwd-on-stdin "$VPN_SERVER" $VPW_EXTRA_ARGS >> "$OPENCONNECT_LOG" 2>&1 < <(echo "$VPN_PASSWORD") &
+echo "Starting OpenConnect using Form Replies..." >> "$OPENCONNECT_LOG"
+
+# Using --form-reply for everything:
+# 'main:group_list' matches the dropdown selection
+# 'main:username' matches the username field
+# 'main:password' matches the first password field
+# 'main:secondary' matches the OTP/Passcode field
+openconnect --protocol=anyconnect \
+    --token-mode=totp \
+    --token-secret="$VPN_TOKEN_SECRET" \
+    --form-reply="main:group_list=$VPN_GROUP" \
+    --form-reply="main:username=$VPN_USERNAME" \
+    --form-reply="main:password=$VPN_PASSWORD" \
+    --form-reply="main:secondary=TOKEN" \
+    "$VPN_SERVER" >> "$OPENCONNECT_LOG" 2>&1 &
+
 OC_PID=$!
 
-# Stream the log and wait for openconnect to exit
+# Stream the log and wait
 tail -n +1 -F "$OPENCONNECT_LOG" &
 TAIL_PID=$!
 
 wait "$OC_PID"
 EXIT_CODE=$?
 
-# Give tail a moment then kill it
 sleep 1
 kill "$TAIL_PID" 2>/dev/null || true
 
